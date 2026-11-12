@@ -4,6 +4,7 @@
 #include <iostream>
 #include <glm/gtc/epsilon.hpp>
 #include <stdio.h>
+#include <iomanip>
 
 const float THRESHOLD = (float)1.0e-5;
 
@@ -28,6 +29,18 @@ glm::mat3 RodriguesRotationMatrix(const glm::vec3& rotationAxis, float angle) {
 	glm::mat3 R = I + (std::sin(angle) * A) + ((1.0f - std::cos(angle)) * A2);
 
 	return R;
+}
+
+float cleanZero(float val) {
+	return (std::abs(val) < 1e-5f) ? 0.0f : val;
+}
+
+void printResultRodRot(const std::string& axisName, const std::string& rotAxisName,
+	const glm::vec3& expected, const glm::vec3& actual) {
+	std::cout << "Rotate " << axisName << " by " << rotAxisName << " (90 deg):\n"
+		<< std::fixed << std::setprecision(1)
+		<< "  Expected Output: [" << expected.x << ", " << expected.y << ", " << expected.z << "]\n"
+		<< "  Actual Output:   [" << cleanZero(actual.x) << ", " << cleanZero(actual.y) << ", " << cleanZero(actual.z) << "]\n\n";
 }
 
 int main(){
@@ -108,4 +121,33 @@ int main(){
 
 	std::cout << "Exercise 4: " << std::endl;
 
+	float angle90 = 3.14159f / 2.0f; // 90 degrees in radians
+
+	// Define the primary axes
+	glm::vec3 xAxis(1.0f, 0.0f, 0.0f);
+	glm::vec3 yAxis(0.0f, 1.0f, 0.0f);
+	glm::vec3 zAxis(0.0f, 0.0f, 1.0f);
+
+	// Get rotation matrices for 90 degrees around X, Y, and Z
+	glm::mat3 rotX = RodriguesRotationMatrix(xAxis, angle90);
+	glm::mat3 rotY = RodriguesRotationMatrix(yAxis, angle90);
+	glm::mat3 rotZ = RodriguesRotationMatrix(zAxis, angle90);
+
+	// Apply rotations and print both expected and actual results
+	std::cout << "--- Rotating X-Axis [1.0, 0.0, 0.0] ---\n";
+	printResultRodRot("X-Axis", "X-Axis", glm::vec3(1.0f, 0.0f, 0.0f), rotX * xAxis);
+	printResultRodRot("X-Axis", "Y-Axis", glm::vec3(0.0f, 0.0f, -1.0f), rotY * xAxis);
+	printResultRodRot("X-Axis", "Z-Axis", glm::vec3(0.0f, 1.0f, 0.0f), rotZ * xAxis);
+
+	std::cout << "--- Rotating Y-Axis [0.0, 1.0, 0.0] ---\n";
+	printResultRodRot("Y-Axis", "X-Axis", glm::vec3(0.0f, 0.0f, 1.0f), rotX * yAxis);
+	printResultRodRot("Y-Axis", "Y-Axis", glm::vec3(0.0f, 1.0f, 0.0f), rotY * yAxis);
+	printResultRodRot("Y-Axis", "Z-Axis", glm::vec3(-1.0f, 0.0f, 0.0f), rotZ * yAxis);
+
+	std::cout << "--- Rotating Z-Axis [0.0, 0.0, 1.0] ---\n";
+	printResultRodRot("Z-Axis", "X-Axis", glm::vec3(0.0f, -1.0f, 0.0f), rotX * zAxis);
+	printResultRodRot("Z-Axis", "Y-Axis", glm::vec3(1.0f, 0.0f, 0.0f), rotY * zAxis);
+	printResultRodRot("Z-Axis", "Z-Axis", glm::vec3(0.0f, 0.0f, 1.0f), rotZ * zAxis);
+
+	return 0;
 }
