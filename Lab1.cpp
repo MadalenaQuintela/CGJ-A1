@@ -15,6 +15,7 @@ const glm::vec3 yAxis(0.0f, 1.0f, 0.0f);
 const glm::vec3 zAxis(0.0f, 0.0f, 1.0f);
 
 glm::vec3 RodriguesRotationFormula(glm::vec3 v, float angle, glm::vec3 a) {
+	a = glm::normalize(a);
 	return v * cos(angle) + glm::cross(a, v) * sin(angle) + a * (glm::dot(a, v) * (1 - cos(angle)));
 }
 
@@ -73,72 +74,80 @@ bool matricesEqual(const glm::mat3& a, const glm::mat3& b) {
 }
 
 void testTripleProductProp() {
-	glm::vec3 i(1.0f, 2.0f, 3.0f);
-	glm::vec3 j(4.0f, 2.0f, 5.0f);
-	glm::vec3 k(3.0f, 1.0f, 4.0f);
+	for (int test = 1; test <= 5; test++) {
+		glm::vec3 i = glm::linearRand(glm::vec3(1.0f), glm::vec3(5.0f));
+		glm::vec3 j = glm::linearRand(glm::vec3(1.0f), glm::vec3(5.0f));
+		glm::vec3 k = glm::linearRand(glm::vec3(1.0f), glm::vec3(5.0f));
 
-	glm::vec3 first = glm::cross(i, glm::cross(j, k));
-	glm::vec3 second = j * glm::dot(i, k) - k * glm::dot(i, j);
+		glm::vec3 first = glm::cross(i, glm::cross(j, k));
+		glm::vec3 second = j * glm::dot(i, k) - k * glm::dot(i, j);
 
-	if (glm::all(glm::epsilonEqual(first, second, THRESHOLD))) {
-		std::cout << "It is true that i x (j x k) = j(i . k) - k(i . j)" << std::endl;
+		// bool equal = glm::all(glm::epsilonEqual(first, second, THRESHOLD));
+		// floating point errors would make some random vectors to fail with the simple test above
+		glm::vec3 tolerance = THRESHOLD * glm::max(glm::vec3(1.0f), glm::max(glm::abs(first), glm::abs(second)));
+		bool equal = glm::all(glm::lessThanEqual(glm::abs(first - second), tolerance));
+
+		std::cout << "Test " << test << ":\n";
+		std::cout << "i: " << i.x << ", " << i.y << ", " << i.z << "\n";
+		std::cout << "j: " << j.x << ", " << j.y << ", " << j.z << "\n";
+		std::cout << "k: " << k.x << ", " << k.y << ", " << k.z << "\n";
+		std::cout << "Result: " << (equal ? "PASS" : "FAIL") << "\n\n";
 	}
 }
 
+void testCameraFrame(glm::vec3 view, glm::vec3 up) {
+	glm::vec3 v = view / glm::length(view);
+	glm::vec3 cross = glm::cross(up, v);
+	if (glm::length(cross) < THRESHOLD) {
+		std::cout << "Cannot create coordinate frame, view and up are parallel!\n";
+		// could return here but output is still interesting
+	}
+
+	glm::vec3 w = cross / glm::length(cross);
+	glm::vec3 u = glm::cross(v, w);
+	std::cout << "v: " << v.x << ", " << v.y << ", " << v.z
+		<< " u: " << u.x << ", " << u.y << ", " << u.z
+		<< " w: " << w.x << ", " << w.y << ", " << w.z << std::endl;
+}
+
 void testCoordinateFrameForCamera() {
-	std::cout << "Test 1:" << std::endl;
+	std::cout << "Test 1:\n";
+	testCameraFrame(glm::vec3(2.0f, 3.0f, 5.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
-	glm::vec3 view(2.0f, 3.0f, 5.0f);
-	glm::vec3 up(0.0f, 1.0f, 0.0f);
+	std::cout << "Test 2:\n";
+	testCameraFrame(glm::vec3(3.0f, 2.0f, 5.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
-	glm::vec3 v;
-	glm::vec3 u;
-	glm::vec3 w;
-
-	v = view / glm::length(view);
-	w = glm::cross(up, v) / glm::length(glm::cross(up, v));
-	u = glm::cross(v, w);
-	std::cout << "v: " << v.x << ", " << v.y << ", " << v.z << " u: " << u.x << ", " << u.y << ", " << u.z << " w: " << w.x << ", " << w.y << ", " << w.z << std::endl;
-
-	std::cout << "Test 2:" << std::endl;
-
-	view = glm::vec3(3.0f, 2.0f, 5.0f);
-	up = glm::vec3(0.0f, 1.0f, 0.0f);
-
-	v = view / glm::length(view);
-	w = glm::cross(up, v) / glm::length(glm::cross(up, v));
-	u = glm::cross(v, w);
-	std::cout << "v: " << v.x << ", " << v.y << ", " << v.z << " u: " << u.x << ", " << u.y << ", " << u.z << " w: " << w.x << ", " << w.y << ", " << w.z << std::endl;
-
-	std::cout << "Test 3:" << std::endl;
-
-	view = glm::vec3(0.0f, 1.0f, 0.0f);
-	up = glm::vec3(0.0f, 1.0f, 0.0f);
-
-	v = view / glm::length(view);
-	w = glm::cross(up, v) / glm::length(glm::cross(up, v));
-	u = glm::cross(v, w);
-	std::cout << "v: " << v.x << ", " << v.y << ", " << v.z << " u: " << u.x << ", " << u.y << ", " << u.z << " w: " << w.x << ", " << w.y << ", " << w.z << std::endl;
+	std::cout << "Test 3:\n";
+	testCameraFrame(glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 }
 
 void testRodriguesRotation() {
-	glm::vec3 vec1 = glm::vec3(1.0f, 1.0f, 0.0f);
+	glm::vec3 vec1 = glm::vec3(1.0f, 1.0f, 1.0f);
 	float angle = pi / 2.0f;
 	std::cout << "Input 1: " << vec1.x << ", " << vec1.y << ", " << vec1.z << ", angle " << angle << " rad, z axis" << std::endl;
 	glm::vec3 res1 = RodriguesRotationFormula(vec1, angle, zAxis);
+	glm::vec3 expected1(-1.0f, 1.0f, 1.0f);
+	std::cout << "Expected: " << expected1.x << ", " << expected1.y << ", " << expected1.z << std::endl;
 	std::cout << "Output 1: vector: " << res1.x << ", " << res1.y << ", " << res1.z << std::endl;
+	std::cout << "Result: " << (glm::all(glm::epsilonEqual(res1, expected1, THRESHOLD)) ? "PASS" : "FAIL") << "\n\n";
 
 	vec1 = glm::vec3(4.0f, 1.0f, 2.0f);
 	angle = 30 * pi / 180.0f;
 	std::cout << "Input 2: " << vec1.x << ", " << vec1.y << ", " << vec1.z << ", angle " << angle << " rad, y axis" << std::endl;
 	glm::vec3 res2 = RodriguesRotationFormula(vec1, angle, yAxis);
+	glm::vec3 expected2(4.4641016f, 1.0f, -0.2679492f);
+	std::cout << "Expected: " << expected2.x << ", " << expected2.y << ", " << expected2.z << std::endl;
 	std::cout << "Output 2: vector: " << res2.x << ", " << res2.y << ", " << res2.z << std::endl;
+	std::cout << "Result: " << (glm::all(glm::epsilonEqual(res2, expected2, THRESHOLD)) ? "PASS" : "FAIL") << "\n\n";
 
 	vec1 = glm::vec3(5.0f, 3.0f, 1.0f);
 	angle = 60 * pi / 180.0f;
 	std::cout << "Input 3: " << vec1.x << ", " << vec1.y << ", " << vec1.z << ", angle " << angle << " rad, x axis" << std::endl;
 	glm::vec3 res3 = RodriguesRotationFormula(vec1, angle, xAxis);
+	glm::vec3 expected3(5.0f, 0.6339746f, 3.0980762f);
+	std::cout << "Expected: " << expected3.x << ", " << expected3.y << ", " << expected3.z << std::endl;
 	std::cout << "Output 3: vector: " << res3.x << ", " << res3.y << ", " << res3.z << std::endl;
+	std::cout << "Result: " << (glm::all(glm::epsilonEqual(res3, expected3, THRESHOLD)) ? "PASS" : "FAIL") << "\n\n";
 }
 
 void testRodriguesRotationMatrix() {
