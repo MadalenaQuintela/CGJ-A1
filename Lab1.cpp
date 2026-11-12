@@ -12,6 +12,24 @@ glm::vec3 RodriguesRotationFormula(glm::vec3 v, float angle, glm::vec3 a) {
 	return v * cos(angle) + glm::cross(a, v) * sin(angle) + a * (glm::dot(a, v) * (1 - cos(angle)));
 }
 
+glm::mat3 RodriguesRotationMatrix(const glm::vec3& rotationAxis, float angle) {
+	glm::vec3 k = glm::normalize(rotationAxis);
+
+	glm::mat3 I(1.0f);
+
+	glm::mat3 A(
+		0.0f, k.z, -k.y,  
+		-k.z, 0.0f, k.x,  
+		k.y, -k.x, 0.0f   
+	);
+
+	glm::mat3 A2 = A * A;
+
+	glm::mat3 R = I + (std::sin(angle) * A) + ((1.0f - std::cos(angle)) * A2);
+
+	return R;
+}
+
 int main(){
 	std::cout << "Exercise 1: " << std::endl;
 	std::cout << "Enter the x, y, z coordinates of the first vector (values between 1 and 5): ";
@@ -87,4 +105,7 @@ int main(){
 	std::cout << "Input 3: vector (5, 3, 1), angle 1.047 rad, x axis" << std::endl;
 	glm::vec3 res3 = RodriguesRotationFormula(glm::vec3(5.0f, 3.0f, 1.0f), 1.047, glm::vec3(1.0f, 0.0f, 0.0f));
 	std::cout << "Output 3: vector: " << res3.x << ", " << res3.y << ", " << res3.z << std::endl;
+
+	std::cout << "Exercise 4: " << std::endl;
+
 }
