@@ -38,6 +38,7 @@ private:
   const GLuint POSITION = 0, COLOR = 1;
   std::unique_ptr<mgl::ShaderProgram> Shaders = nullptr;
   GLint MatrixId;
+  GLint PieceColorId;
 
   struct Mesh {
       GLuint vao = 0;
@@ -51,6 +52,7 @@ private:
   void createBufferObjects();
   void destroyBufferObjects();
   void drawScene();
+  void drawObject(const Mesh& mesh, const glm::mat4& modelMatrix, GLsizei indexCount, const glm::vec4& color = { 1.0f, 0.0f, 0.0f, 1.0f });
 };
 
 //////////////////////////////////////////////////////////////////////// SHADERs
@@ -63,31 +65,32 @@ void MyApp::createShaderProgram() {
   Shaders->addAttribute(mgl::POSITION_ATTRIBUTE, POSITION);
   Shaders->addAttribute(mgl::COLOR_ATTRIBUTE, COLOR);
   Shaders->addUniform("Matrix");
+  Shaders->addUniform("PieceColor");
 
   Shaders->create();
 
   MatrixId = Shaders->Uniforms["Matrix"].index;
+  PieceColorId = Shaders->Uniforms["PieceColor"].index;
 }
 
 //////////////////////////////////////////////////////////////////// VAOs & VBOs
-// Define what we want to draw, in this instance one triangle with varying colors
 struct Vertex {
   GLfloat XYZW[4];
   GLfloat RGBA[4];
 };
 
 const Vertex TriangleVertices[] = {
-    {{0.25f, 0.25f, 0.0f, 1.0f},{1.0f, 0.0f, 0.0f, 1.0f}}, // this corner is red
-	{{0.75f, 0.25f, 0.0f, 1.0f},{0.0f, 1.0f, 0.0f, 1.0f}}, // this corner is green
-	{{0.50f, 0.75f, 0.0f, 1.0f},{0.0f, 0.0f, 1.0f, 1.0f}}  // this corner is blue
+    {{0.0f, 0.0f, 0.0f, 1.0f},{1.0f, 0.0f, 0.0f, 1.0f}},
+	{{0.5f, 0.0f, 0.0f, 1.0f},{1.0f, 0.0f, 0.0f, 1.0f}},
+	{{0.0f, 0.5f, 0.0f, 1.0f},{1.0f, 0.0f, 0.0f, 1.0f}}
 };
 const GLubyte TriangleIndices[] = {0, 1, 2};
 
 const Vertex ParallelogramVertices[] = {
-    { { 0, 0, 0.0f, 1.0f },{ 1.0f, 0.0f, 0.0f, 1.0f } },
-    { { 0.5f, 0.0f, 0.0f, 1.0f },{ 0.0f, 1.0f, 0.0f, 1.0f } },
-	{ { 0.5f, 0.5f, 0.0f, 1.0f },{ 1.0f, 0.0f, 0.0f, 1.0f } },
-    { { 1.0f, 0.5f, 0.0f, 1.0f },{ 0.0f, 0.0f, 1.0f, 1.0f } },
+    { { 0.0f, 0.0f, 0.0f, 1.0f },{ 0.0f, 1.0f, 0.0f, 1.0f } },
+    { { 0.75f, 0.0f, 0.0f, 1.0f },{ 0.0f, 1.0f, 0.0f, 1.0f } },
+	{ { 0.5f, 0.5f, 0.0f, 1.0f },{ 0.0f, 1.0f, 0.0f, 1.0f } },
+    { { 1.25f, 0.5f, 0.0f, 1.0f },{ 0.0f, 1.0f, 0.0f, 1.0f } },
 };
 // Form parallelogram with triangles
 const GLubyte ParallelogramIndices[] = { 
@@ -96,9 +99,9 @@ const GLubyte ParallelogramIndices[] = {
 };
 
 const Vertex SquareVertices[] = {
-    { { 0, 0, 0.0f, 1.0f },{ 1.0f, 0.0f, 0.0f, 1.0f } },
-    { { 0.5f, 0.0f, 0.0f, 1.0f },{ 0.0f, 1.0f, 0.0f, 1.0f } },
-    { { 0.0f, 0.5f, 0.0f, 1.0f },{ 1.0f, 0.0f, 0.0f, 1.0f } },
+    { { 0.0f, 0.0f, 0.0f, 1.0f },{ 0.0f, 0.0f, 1.0f, 1.0f } },
+    { { 0.5f, 0.0f, 0.0f, 1.0f },{ 0.0f, 0.0f, 1.0f, 1.0f } },
+    { { 0.0f, 0.5f, 0.0f, 1.0f },{ 0.0f, 0.0f, 1.0f, 1.0f } },
     { { 0.5f, 0.5f, 0.0f, 1.0f },{ 0.0f, 0.0f, 1.0f, 1.0f } },
 };
 const GLubyte SquareIndices[] = {
@@ -145,30 +148,53 @@ void MyApp::destroyBufferObjects() {
 ////////////////////////////////////////////////////////////////////////// SCENE
 
 const glm::mat4 I(1.0f);
-const glm::mat4 M = glm::translate(glm::mat4(1.0f), glm::vec3(-1.0f, -1.0f, 0.0f));
-const glm::mat4 M2 = glm::translate(glm::mat4(1.0f), glm::vec3(-0.75f, 0.25f, 0.0f));
+
+glm::mat4 makeModelMatrix(glm::vec2 offset, float degrees, glm::vec3 size) {
+    const glm::mat4 I(1.0f);
+    const auto move = glm::translate(I, glm::vec3(offset, 0.0f));
+    const auto rot = glm::rotate(I, glm::radians(degrees), glm::vec3(0.0f, 0.0f, 1.0f));
+    const auto scale = glm::scale(I, size);
+    return move * rot * scale;
+}
+
+glm::mat4 makeModelMatrix(glm::vec2 offset, float degrees, float size = 1.0f) {
+    return makeModelMatrix(offset, degrees, glm::vec3(size, size, 1.0f));
+}
+
+// #9 Bird
+// Matrices for pieces 1 to 7
+const glm::mat4 M1 = makeModelMatrix({ -0.175f, -0.324f }, -45.0f);
+const glm::mat4 M2 = makeModelMatrix({ 0.179f, -0.469f }, 0);
+const glm::mat4 M3 = makeModelMatrix({ 0.8f, -0.678f }, 0.0f, {-0.42f, 0.42f, 1.0f});
+const glm::mat4 M4 = makeModelMatrix({ 0.0f, -0.5f }, 225.0f, 0.5f);
+const glm::mat4 M5 = makeModelMatrix({ -0.18f, 0.03f }, -90.0f, 0.72f);
+const glm::mat4 M6 = makeModelMatrix({ -0.43f, -0.22f }, 0.0f, 0.5f);
+const glm::mat4 M7 = makeModelMatrix({ -0.43f, -0.22f }, 90.0f, 0.5f);
 
 void MyApp::drawScene() {
-  // Drawing directly in clip space
+	// Drawing directly in clip space
 	Shaders->bind();
 
-	glBindVertexArray(triangle.vao);
-	glUniformMatrix4fv(MatrixId, 1, GL_FALSE, glm::value_ptr(M));
-	glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_BYTE,
-                 reinterpret_cast<GLvoid *>(0));
-
-	glBindVertexArray(parallelogram.vao);
-	glUniformMatrix4fv(MatrixId, 1, GL_FALSE, glm::value_ptr(I));
-	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_BYTE,
-                 reinterpret_cast<GLvoid *>(0));
-
-    glBindVertexArray(squareProgram.vao);
-    glUniformMatrix4fv(MatrixId, 1, GL_FALSE, glm::value_ptr(M2));
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_BYTE,
-        reinterpret_cast<GLvoid*>(0));
+    drawObject(triangle, M1, 3);
+    drawObject(triangle, M2, 3, { 0.0f, 0.0f, 1.0f, 1.0f });
+    // flipping the object from earlier shows back of it so we flip the front face winding order to draw it correctly
+	glFrontFace(GL_CW);
+    drawObject(parallelogram, M3, 6, { 1.0f, 0.5f, 0.0f, 1.0f });
+    glFrontFace(GL_CCW);
+    drawObject(triangle, M4, 3, { 0.0f, 1.0f, 0.0f, 1.0f });
+    drawObject(triangle, M5, 3, { 1.0f, 0.0f, 1.0f, 1.0f });
+    drawObject(squareProgram, M6, 6, { 0.0f, 1.0f, 1.0f, 1.0f });
+    drawObject(triangle, M7, 3, { 1.0f, 1.0f, 0.0f, 1.0f });
 
 	Shaders->unbind();
 	glBindVertexArray(0);
+}
+
+void MyApp::drawObject(const Mesh& mesh, const glm::mat4& modelMatrix, GLsizei indexCount, const glm::vec4& color) {
+    glBindVertexArray(mesh.vao);
+    glUniformMatrix4fv(MatrixId, 1, GL_FALSE, glm::value_ptr(modelMatrix));
+    glUniform4fv(PieceColorId, 1, glm::value_ptr(color));
+    glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_BYTE, reinterpret_cast<GLvoid*>(0));
 }
 
 ////////////////////////////////////////////////////////////////////// CALLBACKS
