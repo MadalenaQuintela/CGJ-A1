@@ -53,6 +53,19 @@ private:
 	void destroyBufferObjects();
 	void drawScene();
 	void drawObject(const Mesh& mesh, const glm::mat4& modelMatrix, GLsizei indexCount, const glm::vec4& color = { 1.0f, 0.0f, 0.0f, 1.0f });
+
+	struct Piece {
+		const Mesh& mesh;
+		const glm::mat4& modelMatrix;
+		GLsizei indexCount;
+		glm::vec4 color;
+		GLenum frontFace = GL_CCW;
+
+		void draw(MyApp& app) const {
+			glFrontFace(frontFace);
+			app.drawObject(mesh, modelMatrix, indexCount, color);
+		}
+	};
 };
 
 //////////////////////////////////////////////////////////////////////// SHADERs
@@ -128,7 +141,7 @@ void MyApp::createBufferObjects() {
 
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.buffers[1]);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-		};
+	};
 
 	upload(triangle, TriangleVertices, TriangleIndices);
 	upload(parallelogram, ParallelogramVertices, ParallelogramIndices);
@@ -143,6 +156,8 @@ void MyApp::destroyBufferObjects() {
 	glDeleteBuffers(2, triangle.buffers);
 	glDeleteVertexArrays(1, &parallelogram.vao);
 	glDeleteBuffers(2, parallelogram.buffers);
+	glDeleteVertexArrays(1, &squareProgram.vao);
+	glDeleteBuffers(2, squareProgram.buffers);
 }
 
 ////////////////////////////////////////////////////////////////////////// SCENE
@@ -165,26 +180,35 @@ glm::mat4 makeModelMatrix(glm::vec2 offset, float degrees, float size = 1.0f) {
 // Matrices for pieces 1 to 7
 const glm::mat4 M1 = makeModelMatrix({ -0.175f, -0.324f }, -45.0f);
 const glm::mat4 M2 = makeModelMatrix({ 0.179f, -0.469f }, 0);
-const glm::mat4 M3 = makeModelMatrix({ 0.8f, -0.678f }, 0.0f, { -0.42f, 0.42f, 1.0f });
+const glm::mat4 M3 = makeModelMatrix({ 0.8f, -0.679f }, 0.0f, { -0.42f, 0.42f, 1.0f });
 const glm::mat4 M4 = makeModelMatrix({ 0.0f, -0.5f }, 225.0f, 0.5f);
-const glm::mat4 M5 = makeModelMatrix({ -0.18f, 0.03f }, -90.0f, 0.72f);
-const glm::mat4 M6 = makeModelMatrix({ -0.43f, -0.22f }, 0.0f, 0.5f);
-const glm::mat4 M7 = makeModelMatrix({ -0.43f, -0.22f }, 90.0f, 0.5f);
+const glm::mat4 M5 = makeModelMatrix({ -0.43f, -0.22f }, 0.0f, 0.5f);
+const glm::mat4 M6 = makeModelMatrix({ -0.43f, -0.22f }, 90.0f, 0.5f);
+const glm::mat4 M7 = makeModelMatrix({ -0.18f, 0.031f }, -90.0f, 0.72f);
 
 void MyApp::drawScene() {
+	const Piece pieces[] = {
+		{ triangle, M1, 3, { 1.0f, 0.0f, 0.0f, 1.0f } },
+		{ triangle, M2, 3, { 0.0f, 0.0f, 1.0f, 1.0f } },
+		// Mirroring makes these triangles clockwise so treat them as front facing for this piece
+		{ parallelogram, M3, 6, { 1.0f, 0.5f, 0.0f, 1.0f }, GL_CW },
+		{ triangle, M4, 3, { 0.0f, 1.0f, 0.0f, 1.0f } },
+		{ squareProgram, M5, 6,{ 0.0f, 1.0f, 1.0f, 1.0f } },
+		{ triangle, M6, 3, { 1.0f, 1.0f, 0.0f, 1.0f } },
+		{ triangle, M7, 3, { 1.0f, 0.0f, 1.0f, 1.0f } },
+	};
+
 	// Drawing directly in clip space
 	Shaders->bind();
 
-	drawObject(triangle, M1, 3);
-	drawObject(triangle, M2, 3, { 0.0f, 0.0f, 1.0f, 1.0f });
-	// flipping the object from earlier shows back of it so we flip the front face winding order to draw it correctly
-	glFrontFace(GL_CW);
-	drawObject(parallelogram, M3, 6, { 1.0f, 0.5f, 0.0f, 1.0f });
-	glFrontFace(GL_CCW);
-	drawObject(triangle, M4, 3, { 0.0f, 1.0f, 0.0f, 1.0f });
-	drawObject(triangle, M5, 3, { 1.0f, 0.0f, 1.0f, 1.0f });
-	drawObject(squareProgram, M6, 6, { 0.0f, 1.0f, 1.0f, 1.0f });
-	drawObject(triangle, M7, 3, { 1.0f, 1.0f, 0.0f, 1.0f });
+	// Test drawing in reversed order
+	/*for (auto i = std::size(pieces); i > 0; --i) {
+		pieces[i - 1].draw(*this);
+	}*/
+
+	for (const Piece& piece : pieces) {
+		piece.draw(*this);
+	}
 
 	Shaders->unbind();
 	glBindVertexArray(0);
@@ -219,7 +243,7 @@ int main() {
 	mgl::Engine& engine = mgl::Engine::getInstance();
 	engine.setApp(std::make_unique<MyApp>());
 	engine.setOpenGL(4, 6);
-	engine.setWindow(600, 600, "Hello Modern 2D World", 0, 1);
+	engine.setWindow(600, 600, "2D Tangram #9 Bird", 0, 1);
 	engine.init();
 	engine.run();
 	return EXIT_SUCCESS;
