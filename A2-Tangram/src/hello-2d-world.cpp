@@ -59,7 +59,10 @@ private:
 		const glm::mat4& modelMatrix;
 		GLsizei indexCount;
 		glm::vec4 color;
-		GLenum frontFace = GL_CCW;
+        // previously we flipped the parallelogram, so we needed to change the front face winding 
+        // order but now we technically don't need to do that anymore, so we can just use the
+        // default GL_CCW for all pieces
+        GLenum frontFace = GL_CCW;
 
 		void draw(MyApp& app) const {
 			glFrontFace(frontFace);
@@ -178,8 +181,7 @@ glm::mat4 makeModelMatrix(glm::vec2 offset, float degrees, float size = 1.0f) {
 
 // #44 Mallard
 constexpr float SQRT2 = 1.41421356f;
-constexpr float U =
-    0.30f; // Unit size (change to 0.25f to make smaller, 0.35f for larger)
+constexpr float U = 0.30f; // Unit size
 
 // Matrices for pieces 1 to 7
 const glm::mat4 M1 = makeModelMatrix({-U, (-1.5f + SQRT2) * U}, -135.0f, 4.0f * U);
@@ -194,7 +196,7 @@ void MyApp::drawScene() {
 const Piece pieces[] = {
     {triangle, M1, 3, {1.0f, 0.0f, 0.0f, 1.0f}},
     {triangle, M2, 3, {0.0f, 0.0f, 1.0f, 1.0f}},
-    {parallelogram, M3, 6, {1.0f, 0.5f, 0.0f, 1.0f}}, // GL_CCW (default)
+    {parallelogram, M3, 6, {1.0f, 0.5f, 0.0f, 1.0f}},
     {triangle, M4, 3, {0.0f, 1.0f, 0.0f, 1.0f}},
     {squareProgram, M5, 6, {0.0f, 1.0f, 1.0f, 1.0f}},
     {triangle, M6, 3, {1.0f, 1.0f, 0.0f, 1.0f}},
