@@ -100,10 +100,10 @@ const Vertex TriangleVertices[] = {
 const GLubyte TriangleIndices[] = { 0, 1, 2 };
 
 const Vertex ParallelogramVertices[] = {
-	{ { 0.0f, 0.0f, 0.0f, 1.0f },{ 0.0f, 1.0f, 0.0f, 1.0f } },
-	{ { 0.75f, 0.0f, 0.0f, 1.0f },{ 0.0f, 1.0f, 0.0f, 1.0f } },
-	{ { 0.5f, 0.5f, 0.0f, 1.0f },{ 0.0f, 1.0f, 0.0f, 1.0f } },
-	{ { 1.25f, 0.5f, 0.0f, 1.0f },{ 0.0f, 1.0f, 0.0f, 1.0f } },
+    { {0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 1.0f, 0.0f, 1.0f} },
+    { {1.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 1.0f, 0.0f, 1.0f} },
+    { {0.5f, 0.5f, 0.0f, 1.0f}, {0.0f, 1.0f, 0.0f, 1.0f} },
+    { {1.5f, 0.5f, 0.0f, 1.0f}, {0.0f, 1.0f, 0.0f, 1.0f} },
 };
 // Form parallelogram with triangles
 const GLubyte ParallelogramIndices[] = {
@@ -176,27 +176,30 @@ glm::mat4 makeModelMatrix(glm::vec2 offset, float degrees, float size = 1.0f) {
 	return makeModelMatrix(offset, degrees, glm::vec3(size, size, 1.0f));
 }
 
-// #9 Bird
+// #44 Mallard
+constexpr float SQRT2 = 1.41421356f;
+constexpr float U =
+    0.30f; // Unit size (change to 0.25f to make smaller, 0.35f for larger)
+
 // Matrices for pieces 1 to 7
-const glm::mat4 M1 = makeModelMatrix({ -0.175f, -0.324f }, -45.0f);
-const glm::mat4 M2 = makeModelMatrix({ 0.179f, -0.469f }, 0);
-const glm::mat4 M3 = makeModelMatrix({ 0.8f, -0.679f }, 0.0f, { -0.42f, 0.42f, 1.0f });
-const glm::mat4 M4 = makeModelMatrix({ 0.0f, -0.5f }, 225.0f, 0.5f);
-const glm::mat4 M5 = makeModelMatrix({ -0.43f, -0.22f }, 0.0f, 0.5f);
-const glm::mat4 M6 = makeModelMatrix({ -0.43f, -0.22f }, 90.0f, 0.5f);
-const glm::mat4 M7 = makeModelMatrix({ -0.18f, 0.031f }, -90.0f, 0.72f);
+const glm::mat4 M1 = makeModelMatrix({-U, (-1.5f + SQRT2) * U}, -135.0f, 4.0f * U);
+const glm::mat4 M2 = makeModelMatrix({(-1.0f + SQRT2) * U, -1.5f * U}, 45.0f, 4.0f * U);
+const glm::mat4 M3 = makeModelMatrix({-SQRT2 * U, 0.5f * U}, -135.0f, SQRT2 *U);
+const glm::mat4 M4 = makeModelMatrix({-SQRT2 * U, 0.5f * U}, 90.0f, 2.0f * U);
+const glm::mat4 M5 = makeModelMatrix({-SQRT2 * U, 0.5f * U}, 0.0f, 2.0f * U);
+const glm::mat4 M6 = makeModelMatrix({-SQRT2 * U, 0.5f * U}, -90.0f, 2.0f * U);
+const glm::mat4 M7 = makeModelMatrix({SQRT2 * U, -0.5f * U}, -135.0f, 2.0f * SQRT2 * U);
 
 void MyApp::drawScene() {
-	const Piece pieces[] = {
-		{ triangle, M1, 3, { 1.0f, 0.0f, 0.0f, 1.0f } },
-		{ triangle, M2, 3, { 0.0f, 0.0f, 1.0f, 1.0f } },
-		// Mirroring makes these triangles clockwise so treat them as front facing for this piece
-		{ parallelogram, M3, 6, { 1.0f, 0.5f, 0.0f, 1.0f }, GL_CW },
-		{ triangle, M4, 3, { 0.0f, 1.0f, 0.0f, 1.0f } },
-		{ squareProgram, M5, 6,{ 0.0f, 1.0f, 1.0f, 1.0f } },
-		{ triangle, M6, 3, { 1.0f, 1.0f, 0.0f, 1.0f } },
-		{ triangle, M7, 3, { 1.0f, 0.0f, 1.0f, 1.0f } },
-	};
+const Piece pieces[] = {
+    {triangle, M1, 3, {1.0f, 0.0f, 0.0f, 1.0f}},
+    {triangle, M2, 3, {0.0f, 0.0f, 1.0f, 1.0f}},
+    {parallelogram, M3, 6, {1.0f, 0.5f, 0.0f, 1.0f}}, // GL_CCW (default)
+    {triangle, M4, 3, {0.0f, 1.0f, 0.0f, 1.0f}},
+    {squareProgram, M5, 6, {0.0f, 1.0f, 1.0f, 1.0f}},
+    {triangle, M6, 3, {1.0f, 1.0f, 0.0f, 1.0f}},
+    {triangle, M7, 3, {1.0f, 0.0f, 1.0f, 1.0f}},
+};
 
 	// Drawing directly in clip space
 	Shaders->bind();
@@ -243,7 +246,7 @@ int main() {
 	mgl::Engine& engine = mgl::Engine::getInstance();
 	engine.setApp(std::make_unique<MyApp>());
 	engine.setOpenGL(4, 6);
-	engine.setWindow(600, 600, "2D Tangram #9 Bird", 0, 1);
+    engine.setWindow(600, 600, "2D Tangram #44 Mallard", 0, 1);
 	engine.init();
 	engine.run();
 	return EXIT_SUCCESS;
