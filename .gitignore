@@ -364,3 +364,6 @@ FodyWeavers.xsd
 
 # Keep bundled OpenGL dependencies
 !/libraries/**
+
+# Keep 3D model assets
+!/assets/**
