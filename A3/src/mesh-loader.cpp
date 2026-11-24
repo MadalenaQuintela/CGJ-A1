@@ -45,8 +45,10 @@ class MyApp : public mgl::App {
     CameraState cameraStates[2];
     std::unique_ptr<SceneNode> sceneRoot;
 
-    bool rotating = false; // use to calculate rotation and stuff later
-    double lastMouseX = 0.0;
+    SceneNode *tableNode = nullptr;
+    bool dragging = false;
+    bool rotating = false;
+    double lastMouseX = 0.0; // use to calculate rotation and dragging later
     double lastMouseY = 0.0;
 
     GLint ModelMatrixId = -1;
@@ -119,7 +121,6 @@ glm::mat4 makeModelMatrix(glm::vec3 position, glm::vec3 rotation, glm::vec3 scal
     model = glm::rotate(model, glm::radians(rotation.y), glm::vec3(0, 1, 0));
     model = glm::rotate(model, glm::radians(rotation.x), glm::vec3(1, 0, 0));
     model = glm::scale(model, scale);
-    model = glm::translate(model, glm::vec3(0.0f, -0.25f, 0.0f));
     return model;
 }
 
@@ -134,7 +135,8 @@ void MyApp::createSceneGraph() {
         piece->mesh = mesh;
         piece->shader = Shaders.get();
         piece->color = color;
-        piece->modelMatrix = modelMatrix;
+        piece->modelMatrix = modelMatrix * glm::translate(glm::mat4(1.0f), 
+            glm::vec3(0.0f, -0.25f, 0.0f)); // center adjustment
 
         pickagram->children.push_back(std::move(piece));
     };
@@ -195,7 +197,20 @@ void MyApp::createSceneGraph() {
         scaleParallelogram
     ));
 
+    // Tabletop
+    auto tabletop = std::make_unique<SceneNode>();
+    tableNode = table.get(); // save the tabletop pointer for dragging later
+    tabletop->mesh = squareMesh.get();
+    tabletop->shader = Shaders.get();
+    tabletop->color = glm::vec3(0.45f);
+    tabletop->modelMatrix = makeModelMatrix(
+        {0.0f, -1.6f, 0.0f},
+        {0.0f, 0.0f, 0.0f},
+        {3.5f, 0.2f, 3.5f}
+    );
+
     // Build the hierarchy of nodes, root -> table -> pickagram -> pieces
+    table->children.push_back(std::move(tabletop));
     table->children.push_back(std::move(pickagram));
     sceneRoot->children.push_back(std::move(table));
 }
@@ -311,18 +326,23 @@ void MyApp::keyCallback(GLFWwindow *win, int key, int scancode, int action, int 
 
 void MyApp::mouseButtonCallback(GLFWwindow *win, int button, int action, int mods) {
     if (button == GLFW_MOUSE_BUTTON_RIGHT) {
-        rotating = (action == GLFW_PRESS); // save mouse positions to be used in cursorCallback
-        if (rotating) {
-            glfwGetCursorPos(win, &lastMouseX, &lastMouseY);
-        }
+        rotating = (action == GLFW_PRESS);
+    }
+    if (button == GLFW_MOUSE_BUTTON_LEFT) {
+        dragging = (action == GLFW_PRESS);
+    }
+    if (rotating || dragging) { // save mouse positions to be used in cursorCallback
+        glfwGetCursorPos(win, &lastMouseX, &lastMouseY);
     }
 }
 
 void MyApp::cursorCallback(GLFWwindow *win, double xpos, double ypos) {
-    if (!rotating) {
+    if (!rotating && !dragging) {
         return;
     }
-    float sensitivity = 0.005f;
+    const float rotSensitivity = 0.005f;
+    const float dragSensitivity = 0.02f;
+
     // How many pixels the mouse moved
     float dx = static_cast<float>(xpos - lastMouseX);
     float dy = static_cast<float>(ypos - lastMouseY);
@@ -330,17 +350,39 @@ void MyApp::cursorCallback(GLFWwindow *win, double xpos, double ypos) {
     lastMouseY = ypos;
 
     CameraState& cam = cameraStates[activeCamera];
-    // Horizontal rotation around worlds Y-axis
-    glm::quat yaw = glm::angleAxis(-dx * sensitivity, glm::vec3(0.0f, 1.0f, 0.0f)); 
-    // angleAxis makes quaternion representing rotation around the axis
 
-    // Cameras current right direction and vertical rotation around it
-    glm::vec3 right = cam.rotation * glm::vec3(1.0f, 0.0f, 0.0f);
-    glm::quat pitch = glm::angleAxis(-dy * sensitivity, right);
+    // Right click = rotate camera
+    if (rotating) {
+        // Horizontal rotation around worlds Y-axis
+        glm::quat yaw = glm::angleAxis(-dx * rotSensitivity, glm::vec3(0.0f, 1.0f, 0.0f));
+        // angleAxis makes quaternion representing rotation around the axis
 
-    // Combine rotations and normalize
-    cam.rotation = glm::normalize(yaw * pitch * cam.rotation);
-    updateCamera();
+        // Cameras current right direction and vertical rotation around it
+        glm::vec3 right = cam.rotation * glm::vec3(1.0f, 0.0f, 0.0f);
+        glm::quat pitch = glm::angleAxis(-dy * rotSensitivity, right);
+
+        // Combine rotations and normalize
+        cam.rotation = glm::normalize(yaw * pitch * cam.rotation);
+        updateCamera();
+    }
+    // Left click = move tabletop (and everything on it)
+    if (dragging && tableNode) {
+        // Cameras horizontal right and forward directions
+        glm::vec3 right = cam.rotation * glm::vec3(1, 0, 0);
+        glm::vec3 forward = cam.rotation * glm::vec3(0, 0, -1);
+        right.y = 0.0f; // keep movement on XZ plane
+        forward.y = 0.0f;
+        if (glm::length(right) > 0.0001f) {
+            right = glm::normalize(right);
+        }
+        if (glm::length(forward) > 0.0001f) {
+            forward = glm::normalize(forward);
+        }
+        
+        // Mouse right => camera right, mouse up => camera forward (away from camera)
+        glm::vec3 movement = (dx * right - dy * forward) * dragSensitivity;
+        tableNode->modelMatrix = glm::translate(glm::mat4(1.0f), movement) * tableNode->modelMatrix;
+    }
 }
 
 void MyApp::scrollCallback(GLFWwindow *win, double xoffset, double yoffset) {
