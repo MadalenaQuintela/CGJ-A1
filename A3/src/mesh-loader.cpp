@@ -40,7 +40,9 @@ class MyApp : public mgl::App {
     double lastMouseY = 0.0;
 
     GLint ModelMatrixId = -1;
-    std::unique_ptr<mgl::Mesh> Mesh;
+    std::unique_ptr<mgl::Mesh> triangleMesh;
+    std::unique_ptr<mgl::Mesh> squareMesh;
+    std::unique_ptr<mgl::Mesh> parallelogramMesh;
 
     void createMeshes();
     void createShaderPrograms();
@@ -57,14 +59,18 @@ class MyApp : public mgl::App {
 
 ///////////////////////////////////////////////////////////////////////// MESHES
 
-void MyApp::createMeshes() {
-    std::string mesh_dir = "../../assets/models/";
-    std::string mesh_file = "triangle.obj";
-    std::string mesh_fullname = mesh_dir + mesh_file;
+std::unique_ptr<mgl::Mesh> loadMesh(const std::string &string) {
+    const std::string mesh_dir = "../../assets/models/";
+    auto mesh = std::make_unique<mgl::Mesh>();
+    mesh->joinIdenticalVertices();
+    mesh->create(mesh_dir + string);
+    return mesh;
+}
 
-    Mesh = std::make_unique<mgl::Mesh>();
-    Mesh->joinIdenticalVertices();
-    Mesh->create(mesh_fullname);
+void MyApp::createMeshes() {
+    triangleMesh = loadMesh("triangle.obj");
+    squareMesh = loadMesh("square.obj");
+    parallelogramMesh = loadMesh("parallelogram.obj");
 }
 
 ///////////////////////////////////////////////////////////////////////// SHADER
@@ -75,12 +81,13 @@ void MyApp::createShaderPrograms() {
     Shaders->addShader(GL_FRAGMENT_SHADER, "cube-fs.glsl");
 
     Shaders->addAttribute(mgl::POSITION_ATTRIBUTE, mgl::Mesh::POSITION);
-    if (Mesh->hasNormals()) {
+    Shaders->addAttribute(mgl::NORMAL_ATTRIBUTE, mgl::Mesh::NORMAL);
+    /*if (Mesh->hasNormals()) {
         Shaders->addAttribute(mgl::NORMAL_ATTRIBUTE, mgl::Mesh::NORMAL);
     }
     if (Mesh->hasTexcoords()) {
         Shaders->addAttribute(mgl::TEXCOORD_ATTRIBUTE, mgl::Mesh::TEXCOORD);
-    }
+    }*/
 
     Shaders->addUniform(mgl::MODEL_MATRIX);
     Shaders->addUniformBlock(mgl::CAMERA_BLOCK, UBO_BP);
@@ -150,7 +157,9 @@ glm::mat4 ModelMatrix(1.0f);
 void MyApp::drawScene() {
     Shaders->bind();
     glUniformMatrix4fv(ModelMatrixId, 1, GL_FALSE, glm::value_ptr(ModelMatrix));
-    Mesh->draw();
+    triangleMesh->draw();
+    //squareMesh->draw(); right now they just overlap the triangle since its same position matrix and stuff
+    //parallelogramMesh->draw();
     Shaders->unbind();
 }
 
