@@ -22,6 +22,7 @@ class MyApp : public mgl::App {
 
   private:
     const GLuint UBO_BP = 0;
+    GLint PieceColorId = -1;
 
     struct CameraState {
         glm::quat rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
@@ -30,10 +31,19 @@ class MyApp : public mgl::App {
         bool perspective = true; // switch between orthographic and perspective projection for that camera
     };
 
+    struct SceneNode {
+        mgl::Mesh *mesh = nullptr;
+        mgl::ShaderProgram *shader = nullptr;
+        glm::mat4 modelMatrix{1.0f}; // local transform
+        glm::vec3 color{1.0f};
+        std::vector<std::unique_ptr<SceneNode>> children;
+    };
+
     std::unique_ptr<mgl::ShaderProgram> Shaders;
     std::unique_ptr<mgl::Camera> Camera; // one camera, just switch states
     int activeCamera = 0;
     CameraState cameraStates[2];
+    std::unique_ptr<SceneNode> sceneRoot;
 
     bool rotating = false; // use to calculate rotation and stuff later
     double lastMouseX = 0.0;
@@ -48,6 +58,8 @@ class MyApp : public mgl::App {
     void createShaderPrograms();
     void createCamera();
     void drawScene();
+    void createSceneGraph();
+    void drawNode(const SceneNode &node, const glm::mat4 &parentMatrix);
     void updateCamera();
     void updateProjection(GLFWwindow *win);
     void keyCallback(GLFWwindow *win, int key, int scancode, int action, int mods) override;
@@ -90,11 +102,104 @@ void MyApp::createShaderPrograms() {
     }*/
 
     Shaders->addUniform(mgl::MODEL_MATRIX);
+    Shaders->addUniform("PieceColor");
     Shaders->addUniformBlock(mgl::CAMERA_BLOCK, UBO_BP);
     Shaders->create();
 
     ModelMatrixId = Shaders->Uniforms[mgl::MODEL_MATRIX].index;
+    PieceColorId = Shaders->Uniforms["PieceColor"].index;
 }
+
+///////////////////////////////////////////////////////////////////////// SCENE GRAPH
+
+glm::mat4 makeModelMatrix(glm::vec3 position, glm::vec3 rotation, glm::vec3 scale) {
+    glm::mat4 model(1.0f);
+    model = glm::translate(model, position);
+    model = glm::rotate(model, glm::radians(rotation.z), glm::vec3(0, 0, 1));
+    model = glm::rotate(model, glm::radians(rotation.y), glm::vec3(0, 1, 0));
+    model = glm::rotate(model, glm::radians(rotation.x), glm::vec3(1, 0, 0));
+    model = glm::scale(model, scale);
+    model = glm::translate(model, glm::vec3(0.0f, -0.25f, 0.0f));
+    return model;
+}
+
+void MyApp::createSceneGraph() {
+    sceneRoot = std::make_unique<SceneNode>();
+    auto table = std::make_unique<SceneNode>(); // tabletop node (like main)
+    auto pickagram = std::make_unique<SceneNode>(); // pickagram node, child of table
+
+    auto addPiece = [&](mgl::Mesh *mesh, glm::vec3 color, const glm::mat4 &modelMatrix) {
+        auto piece = std::make_unique<SceneNode>();
+
+        piece->mesh = mesh;
+        piece->shader = Shaders.get();
+        piece->color = color;
+        piece->modelMatrix = modelMatrix;
+
+        pickagram->children.push_back(std::move(piece));
+    };
+   
+    // #44 Mallard 3D piece transforms
+    glm::vec3 scaleTriangleLarge(1.0f);
+    glm::vec3 scaleTriangleMed(0.707f, 1.0f, 0.707f);
+    glm::vec3 scaleTriangleSmall(0.5f, 1.0f, 0.5f);
+    glm::vec3 scaleSquare(0.5f, 1.0f, 0.5f);
+    glm::vec3 scaleParallelogram(0.353f, 1.0f, 0.353f);
+
+    // Large red triangle
+    addPiece(triangleMesh.get(), {1, 0, 0}, makeModelMatrix(
+        {-1.0f, -1.5f, 0.0f},
+        {-90.0f, 0.0f, 45.0f}, 
+        scaleTriangleLarge
+    ));
+
+    // Large blue triangle
+    addPiece(triangleMesh.get(), {0, 0, 1}, makeModelMatrix(
+        {0.413f, -0.087f, 0.0f}, 
+        {-90.0f, 0.0f, 225.0f}, 
+        scaleTriangleLarge
+    ));
+
+    // Medium Magenta triangle
+    addPiece(triangleMesh.get(), {1, 0, 1}, makeModelMatrix(
+        {1.413f, -1.5f, 0.0f},
+        {-90.0f, 0.0f, 45.0f}, 
+        scaleTriangleMed
+    ));
+
+    // Small Green triangle
+    addPiece(triangleMesh.get(), {0, 1, 0}, makeModelMatrix(
+        {-1.913f, 1.0f, 0.0f}, 
+        {-90.0f, 0.0f, 270.0f}, 
+        scaleTriangleSmall
+    ));
+
+    // Small Yellow triangle
+    addPiece(triangleMesh.get(), {1, 1, 0}, makeModelMatrix(
+        {-0.913f, 0.0f, 0.0f},
+        {-90.0f, 0.0f, 90.0f}, 
+        scaleTriangleSmall
+    ));
+
+    // Cyan square
+    addPiece(squareMesh.get(), {0, 1, 1}, makeModelMatrix(
+        {-0.913f, 1.0f, 0.0f}, 
+        {-90.0f, 0.0f, 0.0f},
+        scaleSquare
+    ));
+
+    // Orange parallelogram
+    addPiece(parallelogramMesh.get(), {1, 0.5f, 0}, makeModelMatrix(
+        {-1.913f, -0.5f, 0.0f}, 
+        {-90.0f, 180.0f, -135.0f}, 
+        scaleParallelogram
+    ));
+
+    // Build the hierarchy of nodes, root -> table -> pickagram -> pieces
+    table->children.push_back(std::move(pickagram));
+    sceneRoot->children.push_back(std::move(table));
+}
+
 
 ///////////////////////////////////////////////////////////////////////// CAMERA
 
@@ -102,10 +207,9 @@ void MyApp::createCamera() {
     Camera = std::make_unique<mgl::Camera>(UBO_BP);
     glm::vec3 center(0.0f);
     glm::vec3 up(0.0f, 1.0f, 0.0f);
-    // TODO default positions should be suitable for both closed tangram and standing mallard
-    // these values work for now since we just have a cube and not the mallard object from blender yet
-    glm::vec3 eye1(5.0f, 5.0f, 5.0f); 
-    glm::vec3 eye2(-5.0f, -5.0f, -5.0f);
+
+    glm::vec3 eye1(0.0f, 0.0f, 14.0f); // front view (XY plane)
+    glm::vec3 eye2(0.0f, 12.0f, 5.0f); // view from above (XZ plane) TODO adjust this later
 
     CameraState& c1 = cameraStates[0]; // make sure its not a copy lol
     c1.center = center;
@@ -152,15 +256,22 @@ void MyApp::updateProjection(GLFWwindow *win) {
 
 /////////////////////////////////////////////////////////////////////////// DRAW
 
-glm::mat4 ModelMatrix(1.0f);
-
 void MyApp::drawScene() {
-    Shaders->bind();
-    glUniformMatrix4fv(ModelMatrixId, 1, GL_FALSE, glm::value_ptr(ModelMatrix));
-    triangleMesh->draw();
-    //squareMesh->draw(); right now they just overlap the triangle since its same position matrix and stuff
-    //parallelogramMesh->draw();
-    Shaders->unbind();
+    drawNode(*sceneRoot, glm::mat4(1.0f));
+}
+
+void MyApp::drawNode(const SceneNode &node, const glm::mat4 &parentMatrix) {
+    glm::mat4 worldMatrix = parentMatrix * node.modelMatrix; // inherit parent transform
+    if (node.mesh && node.shader) {
+        node.shader->bind();
+        glUniformMatrix4fv(ModelMatrixId, 1, GL_FALSE, glm::value_ptr(worldMatrix));
+        glUniform3fv(PieceColorId, 1, glm::value_ptr(node.color));
+        node.mesh->draw();
+        node.shader->unbind();
+    }
+    for (const auto &child : node.children) {
+        drawNode(*child, worldMatrix);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////// CALLBACKS
@@ -168,6 +279,8 @@ void MyApp::drawScene() {
 void MyApp::initCallback(GLFWwindow *win [[maybe_unused]]) {
     createMeshes();
     createShaderPrograms(); // after mesh;
+    createSceneGraph();
+
     createCamera();
     updateCamera();
     updateProjection(win);

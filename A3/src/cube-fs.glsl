@@ -6,6 +6,8 @@ in vec3 exNormal;
 
 out vec4 FragmentColor;
 
+uniform vec3 PieceColor;
+
 vec3 constantColor(void) {
     return vec3(0.5);
 }
@@ -29,13 +31,20 @@ vec3 diffuseColor(void) {
     return vec3(intensity);
 }
 
+vec3 pieceColor(void) {
+    vec3 N = normalize(exNormal);
+    vec3 direction = normalize(vec3(1.0, 0.5, 0.25));
+    float brightness = 0.7 + 0.3 * dot(direction, N);
+    return PieceColor * brightness;
+}
+
 void main(void)
 {
     vec3 color;
     // color = constantColor();
     // color = positionColor();
     // color = uvColor();
-    color = normalColor();
+    color = pieceColor();
     // color = diffuseColor();
     FragmentColor = vec4(color, 1.0);
 }
