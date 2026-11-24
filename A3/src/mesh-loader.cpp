@@ -59,21 +59,7 @@ class MyApp : public mgl::App {
 
 void MyApp::createMeshes() {
     std::string mesh_dir = "../../assets/models/";
-    // std::string mesh_file = "cube-v.obj";
-    // std::string mesh_file = "cube-vn-flat.obj";
-    // std::string mesh_file = "cube-vn-smooth.obj";
-    // std::string mesh_file = "cube-vt.obj";
-    // std::string mesh_file = "cube-vt2.obj";
-    // std::string mesh_file = "torus-vtn-flat.obj";
-    // std::string mesh_file = "torus-vtn-smooth.obj";
-    // std::string mesh_file = "suzanne-vtn-flat.obj";
-    // std::string mesh_file = "suzanne-vtn-smooth.obj";
-    // std::string mesh_file = "teapot-vn-flat.obj";
-    // std::string mesh_file = "teapot-vn-smooth.obj";
-    // std::string mesh_file = "bunny-vn-flat.obj";
-    // std::string mesh_file = "bunny-vn-smooth.obj";
-    // std::string mesh_file = "monkey-torus-vtn-flat.obj";
-    std::string mesh_file = "cube-vtn-flat.obj";
+    std::string mesh_file = "triangle.obj";
     std::string mesh_fullname = mesh_dir + mesh_file;
 
     Mesh = std::make_unique<mgl::Mesh>();
