@@ -12,8 +12,18 @@
 #include "../mgl/mgl.hpp" // IWYU pragma: keep
 
 #include <memory>
+#include <vector>
 
 ////////////////////////////////////////////////////////////////////////// MYAPP
+
+const glm::vec3 RED = {1.0f, 0.0f, 0.0f};
+const glm::vec3 BLUE = {0.0f, 0.0f, 1.0f};
+const glm::vec3 MAGENTA = {1.0f, 0.0f, 1.0f};
+const glm::vec3 GREEN = {0.0f, 1.0f, 0.0f};
+const glm::vec3 YELLOW = {1.0f, 1.0f, 0.0f};
+const glm::vec3 CYAN = {0.0f, 1.0f, 1.0f};
+const glm::vec3 ORANGE = {1.0f, 0.5f, 0.0f};
+const glm::vec3 GRAY = {0.45f, 0.45f, 0.45f};
 
 class MyApp : public mgl::App {
   public:
@@ -31,11 +41,26 @@ class MyApp : public mgl::App {
         bool perspective = true; // switch between orthographic and perspective projection for that camera
     };
 
+    struct Transform {
+        glm::vec3 position{0.0f};
+        glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
+        glm::vec3 scale{1.0f};
+
+        // Build model matrix from position, rotation and scale (T * R * S)
+        glm::mat4 toMatrix() const {
+            glm::mat4 model = glm::translate(glm::mat4(1.0f), position);
+            model *= glm::mat4_cast(rotation);
+            return glm::scale(model, scale);
+        }
+    };
+
     struct SceneNode {
         mgl::Mesh *mesh = nullptr;
         mgl::ShaderProgram *shader = nullptr;
         glm::mat4 modelMatrix{1.0f}; // local transform
         glm::vec3 color{1.0f};
+        Transform mallardTransform;
+        Transform boxTransform;
         std::vector<std::unique_ptr<SceneNode>> children;
     };
 
@@ -51,6 +76,11 @@ class MyApp : public mgl::App {
     double lastMouseX = 0.0; // use to calculate rotation and dragging later
     double lastMouseY = 0.0;
 
+    std::vector<SceneNode *> pieceNodes; // pointer to pieces nodes so we dont need to search scene graph to update
+    float animProgress = 1.0f; // 0 = box, 1 = mallard
+    const float animDuration = 3.0f; // seconds for a complete transition
+    double lastFrameTime = 0.0;
+
     GLint ModelMatrixId = -1;
     std::unique_ptr<mgl::Mesh> triangleMesh;
     std::unique_ptr<mgl::Mesh> squareMesh;
@@ -62,6 +92,7 @@ class MyApp : public mgl::App {
     void drawScene();
     void createSceneGraph();
     void drawNode(const SceneNode &node, const glm::mat4 &parentMatrix);
+    void updatePieceTransforms();
     void updateCamera();
     void updateProjection(GLFWwindow *win);
     void keyCallback(GLFWwindow *win, int key, int scancode, int action, int mods) override;
@@ -95,11 +126,8 @@ void MyApp::createShaderPrograms() {
     Shaders->addShader(GL_FRAGMENT_SHADER, "cube-fs.glsl");
 
     Shaders->addAttribute(mgl::POSITION_ATTRIBUTE, mgl::Mesh::POSITION);
-    Shaders->addAttribute(mgl::NORMAL_ATTRIBUTE, mgl::Mesh::NORMAL);
-    /*if (Mesh->hasNormals()) {
-        Shaders->addAttribute(mgl::NORMAL_ATTRIBUTE, mgl::Mesh::NORMAL);
-    }
-    if (Mesh->hasTexcoords()) {
+    Shaders->addAttribute(mgl::NORMAL_ATTRIBUTE, mgl::Mesh::NORMAL); // made sure the obj files has normals
+    /* if (Mesh->hasTexcoords()) { we dont use textures right now
         Shaders->addAttribute(mgl::TEXCOORD_ATTRIBUTE, mgl::Mesh::TEXCOORD);
     }*/
 
@@ -114,14 +142,12 @@ void MyApp::createShaderPrograms() {
 
 ///////////////////////////////////////////////////////////////////////// SCENE GRAPH
 
-glm::mat4 makeModelMatrix(glm::vec3 position, glm::vec3 rotation, glm::vec3 scale) {
-    glm::mat4 model(1.0f);
-    model = glm::translate(model, position);
-    model = glm::rotate(model, glm::radians(rotation.z), glm::vec3(0, 0, 1));
-    model = glm::rotate(model, glm::radians(rotation.y), glm::vec3(0, 1, 0));
-    model = glm::rotate(model, glm::radians(rotation.x), glm::vec3(1, 0, 0));
-    model = glm::scale(model, scale);
-    return model;
+// Helper to convert euler angles (degrees) into quaternions using Z-Y-X rotation order
+glm::quat makeRotation(glm::vec3 degrees) {
+    glm::quat qx = glm::angleAxis(glm::radians(degrees.x), glm::vec3(1, 0, 0));
+    glm::quat qy = glm::angleAxis(glm::radians(degrees.y), glm::vec3(0, 1, 0));
+    glm::quat qz = glm::angleAxis(glm::radians(degrees.z), glm::vec3(0, 0, 1));
+    return glm::normalize(qz * qy * qx);
 }
 
 void MyApp::createSceneGraph() {
@@ -129,90 +155,111 @@ void MyApp::createSceneGraph() {
     auto table = std::make_unique<SceneNode>(); // tabletop node (like main)
     auto pickagram = std::make_unique<SceneNode>(); // pickagram node, child of table
 
-    auto addPiece = [&](mgl::Mesh *mesh, glm::vec3 color, const glm::mat4 &modelMatrix) {
+    auto addPiece = [&](mgl::Mesh *mesh, glm::vec3 color, Transform mallard, Transform box) {
         auto piece = std::make_unique<SceneNode>();
 
         piece->mesh = mesh;
         piece->shader = Shaders.get();
         piece->color = color;
-        piece->modelMatrix = modelMatrix * glm::translate(glm::mat4(1.0f), 
-            glm::vec3(0.0f, -0.25f, 0.0f)); // center adjustment
+        piece->mallardTransform = mallard;
+        piece->boxTransform = box;
 
+        pieceNodes.push_back(piece.get());
         pickagram->children.push_back(std::move(piece));
     };
+
+    // Helper to easily write transforms with degrees when adding pieces by calling makeRotation
+    auto T = [](glm::vec3 position, glm::vec3 rotation, glm::vec3 scale) -> Transform {
+        return {position, makeRotation(rotation), scale}; // makes quat for us
+    };
    
-    // #44 Mallard 3D piece transforms
+    // #44 Mallard and box configurations
     glm::vec3 scaleTriangleLarge(1.0f);
     glm::vec3 scaleTriangleMed(0.707f, 1.0f, 0.707f);
     glm::vec3 scaleTriangleSmall(0.5f, 1.0f, 0.5f);
     glm::vec3 scaleSquare(0.5f, 1.0f, 0.5f);
     glm::vec3 scaleParallelogram(0.353f, 1.0f, 0.353f);
 
+    const float boxY = -1.25f;
+
     // Large red triangle
-    addPiece(triangleMesh.get(), {1, 0, 0}, makeModelMatrix(
-        {-1.0f, -1.5f, 0.0f},
-        {-90.0f, 0.0f, 45.0f}, 
-        scaleTriangleLarge
-    ));
+    addPiece(triangleMesh.get(), RED, 
+        T({-1.0f, -1.5f, 0.0f}, {-90.0f, 0.0f, 45.0f}, scaleTriangleLarge), 
+        T({1.0f, boxY, 1.0f}, {0.0f, 180.0f, 0.0f}, scaleTriangleLarge)
+    );
 
     // Large blue triangle
-    addPiece(triangleMesh.get(), {0, 0, 1}, makeModelMatrix(
-        {0.413f, -0.087f, 0.0f}, 
-        {-90.0f, 0.0f, 225.0f}, 
-        scaleTriangleLarge
-    ));
+    addPiece(triangleMesh.get(), BLUE, 
+        T({0.413f, -0.087f, 0.0f}, {-90.0f, 0.0f, 225.0f}, scaleTriangleLarge), 
+        T({-1.0f, boxY, 1.0f}, {0.0f, 90.0f, 0.0f}, scaleTriangleLarge)
+    );
 
-    // Medium Magenta triangle
-    addPiece(triangleMesh.get(), {1, 0, 1}, makeModelMatrix(
-        {1.413f, -1.5f, 0.0f},
-        {-90.0f, 0.0f, 45.0f}, 
-        scaleTriangleMed
-    ));
+    // Medium magenta triangle
+    addPiece(triangleMesh.get(), MAGENTA, 
+        T({1.413f, -1.5f, 0.0f}, {-90.0f, 0.0f, 45.0f}, scaleTriangleMed),
+        T({0.0f, boxY, -1.0f}, {0.0f, 135.0f, 0.0f}, scaleTriangleMed)
+    );
 
-    // Small Green triangle
-    addPiece(triangleMesh.get(), {0, 1, 0}, makeModelMatrix(
-        {-1.913f, 1.0f, 0.0f}, 
-        {-90.0f, 0.0f, 270.0f}, 
-        scaleTriangleSmall
-    ));
+    // Small green triangle
+    addPiece(triangleMesh.get(), GREEN, 
+        T({-1.913f, 1.0f, 0.0f}, {-90.0f, 0.0f, 270.0f}, scaleTriangleSmall), 
+        T({-1.5f, boxY, -0.5f}, {0.0f, 0.0f, 0.0f}, scaleTriangleSmall)
+    );
 
-    // Small Yellow triangle
-    addPiece(triangleMesh.get(), {1, 1, 0}, makeModelMatrix(
-        {-0.913f, 0.0f, 0.0f},
-        {-90.0f, 0.0f, 90.0f}, 
-        scaleTriangleSmall
-    ));
+    // Small yellow triangle
+    addPiece(triangleMesh.get(), YELLOW, 
+        T({-0.913f, 0.0f, 0.0f}, {-90.0f, 0.0f, 90.0f}, scaleTriangleSmall), 
+        T({0.5f, boxY, -0.5f}, {0.0f, 270.0f, 0.0f}, scaleTriangleSmall)
+    );
 
     // Cyan square
-    addPiece(squareMesh.get(), {0, 1, 1}, makeModelMatrix(
-        {-0.913f, 1.0f, 0.0f}, 
-        {-90.0f, 0.0f, 0.0f},
-        scaleSquare
-    ));
+    addPiece(squareMesh.get(), CYAN, 
+        T({-0.913f, 1.0f, 0.0f}, {-90.0f, 0.0f, 0.0f}, scaleSquare),
+        T({-0.5f, boxY, -0.5f}, {0.0f, 0.0f, 0.0f}, scaleSquare)
+    );
 
     // Orange parallelogram
-    addPiece(parallelogramMesh.get(), {1, 0.5f, 0}, makeModelMatrix(
-        {-1.913f, -0.5f, 0.0f}, 
-        {-90.0f, 180.0f, -135.0f}, 
-        scaleParallelogram
-    ));
+    addPiece(parallelogramMesh.get(), ORANGE, 
+        T({-1.913f, -0.5f, 0.0f}, {-90.0f, 180.0f, -135.0f}, scaleParallelogram), 
+        T({1.0f, boxY, -0.5f}, {0.0f, 135.0f, 0.0f}, scaleParallelogram)
+    );
 
     // Tabletop
     auto tabletop = std::make_unique<SceneNode>();
     tableNode = table.get(); // save the tabletop pointer for dragging later
     tabletop->mesh = squareMesh.get();
     tabletop->shader = Shaders.get();
-    tabletop->color = glm::vec3(0.45f);
-    tabletop->modelMatrix = makeModelMatrix(
+    tabletop->color = GRAY;
+    tabletop->modelMatrix = T(
         {0.0f, -1.6f, 0.0f},
         {0.0f, 0.0f, 0.0f},
-        {3.5f, 0.2f, 3.5f}
-    );
+        {3.5f, 0.2f, 3.5f})
+    .toMatrix();
 
     // Build the hierarchy of nodes, root -> table -> pickagram -> pieces
     table->children.push_back(std::move(tabletop));
     table->children.push_back(std::move(pickagram));
     sceneRoot->children.push_back(std::move(table));
+    updatePieceTransforms();
+}
+
+// Update each piece by interpolating between the box and mallard transforms
+void MyApp::updatePieceTransforms() {
+    for (SceneNode *piece : pieceNodes) {
+        const Transform &box = piece->boxTransform;
+        const Transform &mallard = piece->mallardTransform;
+
+        Transform current = {
+            glm::mix(box.position, mallard.position, animProgress),
+            glm::normalize(glm::slerp(box.rotation, mallard.rotation, animProgress)),
+            glm::mix(box.scale, mallard.scale, animProgress)
+        };
+        
+        // Apply the model matrix and center the Blender mesh's thickness around its origin
+        // (parallelogram would be misplaced without it due to flipping it earlier)
+        piece->modelMatrix = current.toMatrix()
+            * glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.25f, 0.0f));
+    }
 }
 
 
@@ -224,9 +271,9 @@ void MyApp::createCamera() {
     glm::vec3 up(0.0f, 1.0f, 0.0f);
 
     glm::vec3 eye1(0.0f, 0.0f, 14.0f); // front view (XY plane)
-    glm::vec3 eye2(0.0f, 12.0f, 5.0f); // view from above (XZ plane) TODO adjust this later
+    glm::vec3 eye2(0.0f, 12.0f, 5.0f); // view from above (XZ plane slightly rotated so we can still see 3D)
 
-    CameraState& c1 = cameraStates[0]; // make sure its not a copy lol
+    CameraState& c1 = cameraStates[0]; // make sure its not a copy
     c1.center = center;
     c1.distance = glm::length(eye1 - center);
     // view matrix, extract rotation with mat3 (exclude translation), convert to quat, conjugate
@@ -299,10 +346,27 @@ void MyApp::initCallback(GLFWwindow *win [[maybe_unused]]) {
     createCamera();
     updateCamera();
     updateProjection(win);
+
+    lastFrameTime = glfwGetTime();
 }
 
-void MyApp::displayCallback(GLFWwindow *win [[maybe_unused]],
-                            double elapsed [[maybe_unused]]) {
+void MyApp::displayCallback(GLFWwindow *win [[maybe_unused]], double elapsed [[maybe_unused]]) {
+    double currentTime = glfwGetTime();
+    float deltaTime = static_cast<float>(currentTime - lastFrameTime);
+    lastFrameTime = currentTime;
+
+     // Hold right to animate toward mallard
+    if (glfwGetKey(win, GLFW_KEY_RIGHT) == GLFW_PRESS) {
+        animProgress += deltaTime / animDuration;
+    }
+
+    // Hold left to animate toward box
+    if (glfwGetKey(win, GLFW_KEY_LEFT) == GLFW_PRESS) {
+        animProgress -= deltaTime / animDuration;
+    }
+
+    animProgress = glm::clamp(animProgress, 0.0f, 1.0f);
+    updatePieceTransforms();
     drawScene();
 }
 
@@ -410,7 +474,7 @@ int main() {
     mgl::Engine &engine = mgl::Engine::getInstance();
     engine.setApp(std::make_unique<MyApp>());
     engine.setOpenGL(4, 6);
-    engine.setWindow(800, 600, "Mesh Loader", 0, 1);
+    engine.setWindow(800, 600, "Pickagram #44 Mallard", 0, 1);
     engine.init();
     engine.run();
     return EXIT_SUCCESS;
