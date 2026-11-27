@@ -152,8 +152,8 @@ glm::quat makeRotation(glm::vec3 degrees) {
 
 void MyApp::createSceneGraph() {
     sceneRoot = std::make_unique<SceneNode>();
-    auto table = std::make_unique<SceneNode>(); // tabletop node (like main)
-    auto pickagram = std::make_unique<SceneNode>(); // pickagram node, child of table
+    auto table = std::make_unique<SceneNode>();
+    auto pickagram = std::make_unique<SceneNode>();
 
     auto addPiece = [&](mgl::Mesh *mesh, glm::vec3 color, Transform mallard, Transform box) {
         auto piece = std::make_unique<SceneNode>();
